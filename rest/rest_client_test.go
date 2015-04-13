@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ably/ably-go"
 	"github.com/ably/ably-go/Godeps/_workspace/src/gopkg.in/vmihailenco/msgpack.v2"
 	"github.com/ably/ably-go/config"
 	"github.com/ably/ably-go/proto"
@@ -21,11 +20,11 @@ import (
 	. "github.com/ably/ably-go/Godeps/_workspace/src/github.com/onsi/gomega"
 )
 
-var _ = Describe("Client", func() {
+var _ = Describe("RestClient", func() {
 	var (
 		server *httptest.Server
 
-		createMockedClient = func(server *httptest.Server) *http.Client {
+		createMockedRestClient = func(server *httptest.Server) *http.Client {
 			return &http.Client{
 				Transport: &http.Transport{
 					Proxy: func(req *http.Request) (*url.URL, error) {
@@ -51,7 +50,7 @@ var _ = Describe("Client", func() {
 			}))
 
 			client.RestEndpoint = strings.Replace(client.RestEndpoint, "https", "http", 1)
-			client.HTTPClient = createMockedClient(server)
+			client.HTTPClient = createMockedRestClient(server)
 
 			var err error
 			request, err = http.NewRequest("POST", client.RestEndpoint+"/any_path", bytes.NewBuffer([]byte{}))
@@ -107,12 +106,12 @@ var _ = Describe("Client", func() {
 			BeforeEach(func() {
 				testParamsCopy := testApp.Params
 				testParamsCopy.Protocol = config.ProtocolJSON
-				client = ably.NewRestClient(testParamsCopy)
+				client = rest.NewRestClient(testParamsCopy)
 
 				client.RestEndpoint = strings.Replace(client.RestEndpoint, "https", "http", 1)
-				client.HTTPClient = createMockedClient(server)
+				client.HTTPClient = createMockedRestClient(server)
 
-				err := client.Channel("test").Publish("ping", "pong")
+				err := client.RestChannel("test").Publish("ping", "pong")
 				Expect(err).NotTo(HaveOccurred())
 			})
 
@@ -127,12 +126,12 @@ var _ = Describe("Client", func() {
 			BeforeEach(func() {
 				testParamsCopy := testApp.Params
 				testParamsCopy.Protocol = config.ProtocolMsgPack
-				client = ably.NewRestClient(testParamsCopy)
+				client = rest.NewRestClient(testParamsCopy)
 
 				client.RestEndpoint = strings.Replace(client.RestEndpoint, "https", "http", 1)
-				client.HTTPClient = createMockedClient(server)
+				client.HTTPClient = createMockedRestClient(server)
 
-				err := client.Channel("test").Publish("ping", "pong")
+				err := client.RestChannel("test").Publish("ping", "pong")
 				Expect(err).NotTo(HaveOccurred())
 			})
 

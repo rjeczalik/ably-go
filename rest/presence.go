@@ -6,8 +6,8 @@ import (
 )
 
 type Presence struct {
-	client  *Client
-	channel *Channel
+	client  *RestClient
+	channel *RestChannel
 }
 
 // Get gives the channel's presence messages according to the given parameters.

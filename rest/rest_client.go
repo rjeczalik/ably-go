@@ -27,7 +27,7 @@ func query(fn func(string, interface{}) (*http.Response, error)) proto.QueryFunc
 	}
 }
 
-type Client struct {
+type RestClient struct {
 	Auth *Auth
 
 	RestEndpoint string
@@ -35,15 +35,16 @@ type Client struct {
 
 	HTTPClient *http.Client
 
-	channels map[string]*Channel
+	channels map[string]*RestChannel
 	chanMtx  sync.Mutex
 }
 
-func NewClient(params config.Params) *Client {
-	client := &Client{
+func NewRestClient(params config.Params) *RestClient {
+	params.Prepare()
+	client := &RestClient{
 		RestEndpoint: params.RestEndpoint,
 		HTTPClient:   params.HTTPClient,
-		channels:     make(map[string]*Channel),
+		channels:     make(map[string]*RestChannel),
 	}
 
 	client.Auth = NewAuth(params, client)
@@ -52,14 +53,14 @@ func NewClient(params config.Params) *Client {
 	return client
 }
 
-func (c *Client) httpclient() *http.Client {
+func (c *RestClient) httpclient() *http.Client {
 	if c.HTTPClient != nil {
 		return c.HTTPClient
 	}
 	return http.DefaultClient
 }
 
-func (c *Client) Time() (*time.Time, error) {
+func (c *RestClient) Time() (*time.Time, error) {
 	times := []int64{}
 	_, err := c.Get("/time", &times)
 	if err != nil {
@@ -72,7 +73,7 @@ func (c *Client) Time() (*time.Time, error) {
 	return &t, nil
 }
 
-func (c *Client) Channel(name string) *Channel {
+func (c *RestClient) RestChannel(name string) *RestChannel {
 	c.chanMtx.Lock()
 	defer c.chanMtx.Unlock()
 
@@ -80,7 +81,7 @@ func (c *Client) Channel(name string) *Channel {
 		return ch
 	}
 
-	ch := newChannel(name, c)
+	ch := newRestChannel(name, c)
 	c.channels[name] = ch
 	return ch
 }
@@ -88,11 +89,11 @@ func (c *Client) Channel(name string) *Channel {
 // Stats gives the channel's metrics according to the given parameters.
 // The returned resource can be inspected for the statistics via the Stats()
 // method.
-func (c *Client) Stats(params *config.PaginateParams) (*proto.PaginatedResource, error) {
+func (c *RestClient) Stats(params *config.PaginateParams) (*proto.PaginatedResource, error) {
 	return proto.NewPaginatedResource(statType, "/stats", params, query(c.Get))
 }
 
-func (c *Client) Get(path string, out interface{}) (*http.Response, error) {
+func (c *RestClient) Get(path string, out interface{}) (*http.Response, error) {
 	req, err := http.NewRequest("GET", c.RestEndpoint+path, nil)
 	if err != nil {
 		return nil, err
@@ -117,7 +118,7 @@ func (c *Client) Get(path string, out interface{}) (*http.Response, error) {
 	return res, nil
 }
 
-func (c *Client) Post(path string, in, out interface{}) (*http.Response, error) {
+func (c *RestClient) Post(path string, in, out interface{}) (*http.Response, error) {
 	buf, err := c.marshalMessages(in)
 	if err != nil {
 		return nil, err
@@ -144,11 +145,11 @@ func (c *Client) Post(path string, in, out interface{}) (*http.Response, error) 
 	return res, nil
 }
 
-func (c *Client) ok(status int) bool {
+func (c *RestClient) ok(status int) bool {
 	return status == http.StatusOK || status == http.StatusCreated
 }
 
-func (c *Client) marshalMessages(in interface{}) ([]byte, error) {
+func (c *RestClient) marshalMessages(in interface{}) ([]byte, error) {
 	switch c.Protocol {
 	case config.ProtocolJSON:
 		return json.Marshal(in)

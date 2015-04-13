@@ -3,7 +3,6 @@ package realtime_test
 import (
 	"testing"
 
-	"github.com/ably/ably-go"
 	. "github.com/ably/ably-go/Godeps/_workspace/src/github.com/onsi/ginkgo"
 	. "github.com/ably/ably-go/Godeps/_workspace/src/github.com/onsi/gomega"
 	"github.com/ably/ably-go/realtime"
@@ -17,8 +16,8 @@ func TestRealtime(t *testing.T) {
 
 var (
 	testApp *support.TestApp
-	client  *realtime.Client
-	channel *realtime.Channel
+	client  *realtime.RealtimeClient
+	channel *realtime.RealtimeChannel
 )
 
 var _ = BeforeSuite(func() {
@@ -28,8 +27,8 @@ var _ = BeforeSuite(func() {
 })
 
 var _ = BeforeEach(func() {
-	client = ably.NewRealtimeClient(testApp.Params)
-	channel = client.Channel("test")
+	client = realtime.NewRealtimeClient(testApp.Params)
+	channel = client.RealtimeChannel("test")
 })
 
 var _ = AfterEach(func() {

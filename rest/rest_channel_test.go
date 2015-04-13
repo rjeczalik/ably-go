@@ -8,7 +8,7 @@ import (
 	"github.com/ably/ably-go/rest"
 )
 
-var _ = Describe("Channel", func() {
+var _ = Describe("RestChannel", func() {
 	const (
 		event   = "sendMessage"
 		message = "A message in a bottle"
@@ -31,18 +31,18 @@ var _ = Describe("Channel", func() {
 	})
 
 	Describe("History", func() {
-		var historyChannel *rest.Channel
+		var historyRestChannel *rest.RestChannel
 
 		BeforeEach(func() {
-			historyChannel = client.Channel("history")
+			historyRestChannel = client.RestChannel("history")
 
 			for i := 0; i < 2; i++ {
-				historyChannel.Publish("breakingnews", "Another Shark attack!!")
+				historyRestChannel.Publish("breakingnews", "Another Shark attack!!")
 			}
 		})
 
 		It("returns a paginated result", func() {
-			page1, err := historyChannel.History(&config.PaginateParams{Limit: 1})
+			page1, err := historyRestChannel.History(&config.PaginateParams{Limit: 1})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(len(page1.Messages())).To(Equal(1))
 			Expect(len(page1.Items())).To(Equal(1))
@@ -55,10 +55,10 @@ var _ = Describe("Channel", func() {
 	})
 
 	Describe("PublishAll", func() {
-		var encodingChannel *rest.Channel
+		var encodingRestChannel *rest.RestChannel
 
 		BeforeEach(func() {
-			encodingChannel = client.Channel("encoding")
+			encodingRestChannel = client.RestChannel("encoding")
 		})
 
 		It("allows to send multiple messages at once", func() {
@@ -66,10 +66,10 @@ var _ = Describe("Channel", func() {
 				{Name: "send", Data: "test data 1"},
 				{Name: "send", Data: "test data 2"},
 			}
-			err := encodingChannel.PublishAll(messages)
+			err := encodingRestChannel.PublishAll(messages)
 			Expect(err).NotTo(HaveOccurred())
 
-			page, err := encodingChannel.History(&config.PaginateParams{Limit: 2})
+			page, err := encodingRestChannel.History(&config.PaginateParams{Limit: 2})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(len(page.Messages())).To(Equal(2))
 			Expect(len(page.Items())).To(Equal(2))

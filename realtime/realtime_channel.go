@@ -8,8 +8,8 @@ import (
 	"github.com/ably/ably-go/proto"
 )
 
-func NewChannel(name string, client *Client) *Channel {
-	return &Channel{
+func NewRealtimeChannel(name string, client *RealtimeClient) *RealtimeChannel {
+	return &RealtimeChannel{
 		Name:      name,
 		client:    client,
 		listeners: make(map[string]map[chan *proto.Message]struct{}),
@@ -27,10 +27,10 @@ const (
 	ChanStateFailed
 )
 
-type Channel struct {
+type RealtimeChannel struct {
 	Name string
 
-	client *Client
+	client *RealtimeClient
 
 	State    ChanState
 	stateMtx sync.Mutex
@@ -41,7 +41,7 @@ type Channel struct {
 	listenMtx sync.RWMutex
 }
 
-func (c *Channel) SubscribeTo(event string) chan *proto.Message {
+func (c *RealtimeChannel) SubscribeTo(event string) chan *proto.Message {
 	ch := make(chan *proto.Message)
 	c.listenMtx.Lock()
 	if _, ok := c.listeners[event]; !ok {
@@ -53,7 +53,7 @@ func (c *Channel) SubscribeTo(event string) chan *proto.Message {
 	return ch
 }
 
-func (c *Channel) Unsubscribe(event string, ch chan *proto.Message) {
+func (c *RealtimeChannel) Unsubscribe(event string, ch chan *proto.Message) {
 	c.listenMtx.Lock()
 	delete(c.listeners[event], ch)
 	if len(c.listeners[event]) == 0 {
@@ -63,7 +63,7 @@ func (c *Channel) Unsubscribe(event string, ch chan *proto.Message) {
 	close(ch)
 }
 
-func (c *Channel) Publish(name string, data string) error {
+func (c *RealtimeChannel) Publish(name string, data string) error {
 	c.Attach()
 	msg := &proto.ProtocolMessage{
 		Action:  proto.ActionMessage,
@@ -75,7 +75,7 @@ func (c *Channel) Publish(name string, data string) error {
 	return c.client.send(msg)
 }
 
-func (c *Channel) notify(msg *proto.ProtocolMessage) {
+func (c *RealtimeChannel) notify(msg *proto.ProtocolMessage) {
 	switch msg.Action {
 	case proto.ActionAttached:
 		c.setState(ChanStateAttached)
@@ -106,7 +106,7 @@ func (c *Channel) notify(msg *proto.ProtocolMessage) {
 	}
 }
 
-func (c *Channel) Attach() {
+func (c *RealtimeChannel) Attach() {
 	c.stateMtx.Lock()
 	defer c.stateMtx.Unlock()
 	if c.State == ChanStateAttaching || c.State == ChanStateAttached {
@@ -124,7 +124,7 @@ func (c *Channel) Attach() {
 	c.State = ChanStateAttaching
 }
 
-func (c *Channel) setState(s ChanState) {
+func (c *RealtimeChannel) setState(s ChanState) {
 	c.stateMtx.Lock()
 	defer c.stateMtx.Unlock()
 	c.State = s

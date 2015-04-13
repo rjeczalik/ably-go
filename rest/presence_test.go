@@ -15,7 +15,7 @@ var _ = Describe("Presence", func() {
 		var presence *rest.Presence
 
 		BeforeEach(func() {
-			channel = client.Channel("persisted:presence_fixtures")
+			channel = client.RestChannel("persisted:presence_fixtures")
 			presence = channel.Presence
 		})
 

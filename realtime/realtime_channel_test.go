@@ -5,7 +5,7 @@ import (
 	. "github.com/ably/ably-go/Godeps/_workspace/src/github.com/onsi/gomega"
 )
 
-var _ = Describe("Channel", func() {
+var _ = Describe("RealtimeChannel", func() {
 	Context("When the connection is ready", func() {
 		XIt("publish messages", func() {
 			err := channel.Publish("hello", "world")

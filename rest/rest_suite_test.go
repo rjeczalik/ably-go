@@ -1,7 +1,6 @@
 package rest_test
 
 import (
-	"github.com/ably/ably-go"
 	"github.com/ably/ably-go/rest"
 	"github.com/ably/ably-go/test/support"
 
@@ -18,8 +17,8 @@ func TestRest(t *testing.T) {
 
 var (
 	testApp *support.TestApp
-	client  *rest.Client
-	channel *rest.Channel
+	client  *rest.RestClient
+	channel *rest.RestChannel
 )
 
 var _ = BeforeSuite(func() {
@@ -29,8 +28,8 @@ var _ = BeforeSuite(func() {
 })
 
 var _ = BeforeEach(func() {
-	client = ably.NewRestClient(testApp.Params)
-	channel = client.Channel("test")
+	client = rest.NewRestClient(testApp.Params)
+	channel = client.RestChannel("test")
 })
 
 var _ = AfterSuite(func() {

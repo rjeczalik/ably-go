@@ -9,35 +9,36 @@ import (
 	"github.com/ably/ably-go/rest"
 )
 
-func NewClient(params config.Params) *Client {
-	c := &Client{
+func NewRealtimeClient(params config.Params) *RealtimeClient {
+	params.Prepare()
+	c := &RealtimeClient{
 		Params:     params,
 		Err:        make(chan error),
-		rest:       rest.NewClient(params),
-		channels:   make(map[string]*Channel),
+		rest:       rest.NewRestClient(params),
+		channels:   make(map[string]*RealtimeChannel),
 		Connection: NewConn(params),
 	}
 	go c.connect()
 	return c
 }
 
-type Client struct {
+type RealtimeClient struct {
 	config.Params
 	Err chan error
 
-	rest *rest.Client
+	rest *rest.RestClient
 
 	Connection *Conn
 
-	channels map[string]*Channel
+	channels map[string]*RealtimeChannel
 	chanMtx  sync.RWMutex
 }
 
-func (c *Client) Close() {
+func (c *RealtimeClient) Close() {
 	c.Connection.Close()
 }
 
-func (c *Client) Channel(name string) *Channel {
+func (c *RealtimeClient) RealtimeChannel(name string) *RealtimeChannel {
 	c.chanMtx.Lock()
 	defer c.chanMtx.Unlock()
 
@@ -45,12 +46,12 @@ func (c *Client) Channel(name string) *Channel {
 		return ch
 	}
 
-	ch := NewChannel(name, c)
+	ch := NewRealtimeChannel(name, c)
 	c.channels[name] = ch
 	return ch
 }
 
-func (c *Client) connect() {
+func (c *RealtimeClient) connect() {
 	err := c.Connection.Connect()
 
 	if err != nil {
@@ -61,7 +62,7 @@ func (c *Client) connect() {
 	for {
 		select {
 		case msg := <-c.Connection.Ch:
-			c.Channel(msg.Channel).notify(msg)
+			c.RealtimeChannel(msg.Channel).notify(msg)
 		case err := <-c.Connection.Err:
 			c.Close()
 			c.Err <- err
@@ -70,10 +71,10 @@ func (c *Client) connect() {
 	}
 }
 
-func (c *Client) send(msg *proto.ProtocolMessage) error {
+func (c *RealtimeClient) send(msg *proto.ProtocolMessage) error {
 	return c.Connection.send(msg)
 }
 
-func (c *Client) isActive() bool {
+func (c *RealtimeClient) isActive() bool {
 	return c.Connection.isActive()
 }

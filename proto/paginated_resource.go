@@ -40,7 +40,7 @@ type PaginatedResource struct {
 }
 
 // NewPaginatedResource returns a new instance of PaginatedResource
-// It needs to be a struct implementing ResourceReader which in our case is rest.Client.
+// It needs to be a struct implementing ResourceReader which in our case is rest.RestClient.
 func NewPaginatedResource(typ reflect.Type, path string, params *config.PaginateParams,
 	query QueryFunc) (*PaginatedResource, error) {
 	p := &PaginatedResource{

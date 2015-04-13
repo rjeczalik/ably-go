@@ -73,10 +73,10 @@ func (t *TokenRequest) Sign(secret string) {
 
 type Auth struct {
 	config.Params
-	client *Client
+	client *RestClient
 }
 
-func NewAuth(params config.Params, client *Client) *Auth {
+func NewAuth(params config.Params, client *RestClient) *Auth {
 	return &Auth{
 		Params: params,
 		client: client,
