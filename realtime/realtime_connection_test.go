@@ -10,7 +10,14 @@ import (
 )
 
 var _ = Describe("Connection", func() {
+	var client *realtime.RealtimeClient
+
+	BeforeEach(func() {
+		client = realtime.NewRealtimeClient(testApp.Params)
+	})
+
 	AfterEach(func() {
+		defer client.Close()
 		select {
 		case err := <-client.Err:
 			Fail("Error channel is not empty: " + err.Error())
