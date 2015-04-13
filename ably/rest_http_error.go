@@ -1,4 +1,4 @@
-package rest
+package ably
 
 import (
 	"io/ioutil"

@@ -1,9 +1,9 @@
-package config_test
+package ably_test
 
 import (
 	"net/url"
 
-	"github.com/ably/ably-go/config"
+	"github.com/ably/ably-go/ably"
 
 	. "github.com/ably/ably-go/Godeps/_workspace/src/github.com/onsi/ginkgo"
 	. "github.com/ably/ably-go/Godeps/_workspace/src/github.com/onsi/gomega"
@@ -11,13 +11,13 @@ import (
 
 var _ = Describe("ScopeParams", func() {
 	var (
-		params config.ScopeParams
+		params ably.ScopeParams
 		values *url.Values
 	)
 
 	Describe("Values", func() {
 		BeforeEach(func() {
-			params = config.ScopeParams{}
+			params = ably.ScopeParams{}
 		})
 
 		Context("with an invalid range", func() {

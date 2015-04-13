@@ -4,17 +4,16 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/ably/ably-go/config"
+	"github.com/ably/ably-go/ably"
 	"github.com/ably/ably-go/proto"
-	"github.com/ably/ably-go/rest"
 )
 
-func NewRealtimeClient(params config.Params) *RealtimeClient {
+func NewRealtimeClient(params ably.Params) *RealtimeClient {
 	params.Prepare()
 	c := &RealtimeClient{
 		Params:     params,
 		Err:        make(chan error),
-		rest:       rest.NewRestClient(params),
+		rest:       ably.NewRestClient(params),
 		channels:   make(map[string]*RealtimeChannel),
 		Connection: NewConn(params),
 	}
@@ -23,10 +22,10 @@ func NewRealtimeClient(params config.Params) *RealtimeClient {
 }
 
 type RealtimeClient struct {
-	config.Params
+	ably.Params
 	Err chan error
 
-	rest *rest.RestClient
+	rest *ably.RestClient
 
 	Connection *Conn
 

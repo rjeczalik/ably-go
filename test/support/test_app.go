@@ -11,7 +11,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/ably/ably-go/config"
+	"github.com/ably/ably-go/ably"
 )
 
 type testAppNamespace struct {
@@ -43,7 +43,7 @@ type testAppConfig struct {
 }
 
 type TestApp struct {
-	Params config.Params
+	Params ably.Params
 	Config testAppConfig
 }
 
@@ -153,7 +153,7 @@ func NewTestApp() *TestApp {
 	}
 
 	return &TestApp{
-		Params: config.Params{
+		Params: ably.Params{
 			RealtimeEndpoint: "wss://sandbox-realtime.ably.io:443",
 			RestEndpoint:     "https://sandbox-rest.ably.io",
 			HTTPClient:       client,

@@ -1,10 +1,9 @@
-package rest_test
+package ably_test
 
 import (
 	"time"
 
-	"github.com/ably/ably-go/config"
-	"github.com/ably/ably-go/rest"
+	"github.com/ably/ably-go/ably"
 
 	. "github.com/ably/ably-go/Godeps/_workspace/src/github.com/onsi/ginkgo"
 	. "github.com/ably/ably-go/Godeps/_workspace/src/github.com/onsi/gomega"
@@ -12,7 +11,7 @@ import (
 
 var _ = Describe("Presence", func() {
 	Context("tested against presence fixture data set up in test app", func() {
-		var presence *rest.Presence
+		var presence *ably.Presence
 
 		BeforeEach(func() {
 			channel = client.RestChannel("persisted:presence_fixtures")
@@ -28,7 +27,7 @@ var _ = Describe("Presence", func() {
 
 			Context("with a limit option", func() {
 				It("returns a paginated response", func() {
-					page1, err := presence.Get(&config.PaginateParams{Limit: 2})
+					page1, err := presence.Get(&ably.PaginateParams{Limit: 2})
 					Expect(err).NotTo(HaveOccurred())
 					Expect(len(page1.PresenceMessages())).To(Equal(2))
 					Expect(len(page1.Items())).To(Equal(2))
@@ -53,10 +52,10 @@ var _ = Describe("Presence", func() {
 
 			Context("with start and end time", func() {
 				It("can return older items from a certain date given a start / end timestamp", func() {
-					params := &config.PaginateParams{
-						ScopeParams: config.ScopeParams{
-							Start: config.NewTimestamp(time.Now().Add(-24 * time.Hour)),
-							End:   config.NewTimestamp(time.Now()),
+					params := &ably.PaginateParams{
+						ScopeParams: ably.ScopeParams{
+							Start: ably.NewTimestamp(time.Now().Add(-24 * time.Hour)),
+							End:   ably.NewTimestamp(time.Now()),
 						},
 					}
 					page, err := presence.History(params)

@@ -1,4 +1,4 @@
-package config_test
+package ably_test
 
 import (
 	"log"
@@ -6,19 +6,19 @@ import (
 	. "github.com/ably/ably-go/Godeps/_workspace/src/github.com/onsi/ginkgo"
 	. "github.com/ably/ably-go/Godeps/_workspace/src/github.com/onsi/gomega"
 	"github.com/ably/ably-go/Godeps/_workspace/src/github.com/onsi/gomega/gbytes"
-	"github.com/ably/ably-go/config"
+	"github.com/ably/ably-go/ably"
 )
 
 var _ = Describe("Params", func() {
 	var (
-		params *config.Params
+		params *ably.Params
 		buffer *gbytes.Buffer
 	)
 
 	BeforeEach(func() {
 		buffer = gbytes.NewBuffer()
 
-		params = &config.Params{
+		params = &ably.Params{
 			ApiKey: "id:secret",
 		}
 
@@ -32,9 +32,9 @@ var _ = Describe("Params", func() {
 
 	Context("when ApiKey is invalid", func() {
 		BeforeEach(func() {
-			params = &config.Params{
+			params = &ably.Params{
 				ApiKey: "invalid",
-				AblyLogger: &config.AblyLogger{
+				AblyLogger: &ably.AblyLogger{
 					Logger: log.New(buffer, "", log.Lmicroseconds|log.Llongfile),
 				},
 			}

@@ -1,4 +1,4 @@
-package rest
+package ably
 
 import (
 	"bytes"
@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/ably/ably-go/Godeps/_workspace/src/gopkg.in/vmihailenco/msgpack.v2"
-	"github.com/ably/ably-go/config"
 	"github.com/ably/ably-go/proto"
 )
 
@@ -21,7 +20,7 @@ var (
 	presMsgType = reflect.TypeOf((*[]*proto.PresenceMessage)(nil)).Elem()
 )
 
-func query(fn func(string, interface{}) (*http.Response, error)) proto.QueryFunc {
+func query(fn func(string, interface{}) (*http.Response, error)) QueryFunc {
 	return func(path string) (*http.Response, error) {
 		return fn(path, nil)
 	}
@@ -31,7 +30,7 @@ type RestClient struct {
 	Auth *Auth
 
 	RestEndpoint string
-	Protocol     config.ProtocolType
+	Protocol     ProtocolType
 
 	HTTPClient *http.Client
 
@@ -39,7 +38,7 @@ type RestClient struct {
 	chanMtx  sync.Mutex
 }
 
-func NewRestClient(params config.Params) *RestClient {
+func NewRestClient(params Params) *RestClient {
 	params.Prepare()
 	client := &RestClient{
 		RestEndpoint: params.RestEndpoint,
@@ -89,8 +88,8 @@ func (c *RestClient) RestChannel(name string) *RestChannel {
 // Stats gives the channel's metrics according to the given parameters.
 // The returned resource can be inspected for the statistics via the Stats()
 // method.
-func (c *RestClient) Stats(params *config.PaginateParams) (*proto.PaginatedResource, error) {
-	return proto.NewPaginatedResource(statType, "/stats", params, query(c.Get))
+func (c *RestClient) Stats(params *PaginateParams) (*PaginatedResource, error) {
+	return NewPaginatedResource(statType, "/stats", params, query(c.Get))
 }
 
 func (c *RestClient) Get(path string, out interface{}) (*http.Response, error) {
@@ -151,9 +150,9 @@ func (c *RestClient) ok(status int) bool {
 
 func (c *RestClient) marshalMessages(in interface{}) ([]byte, error) {
 	switch c.Protocol {
-	case config.ProtocolJSON:
+	case ProtocolJSON:
 		return json.Marshal(in)
-	case config.ProtocolMsgPack:
+	case ProtocolMsgPack:
 		return msgpack.Marshal(in)
 	default:
 		// TODO log fallback to default encoding

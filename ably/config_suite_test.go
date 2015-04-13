@@ -1,4 +1,4 @@
-package config_test
+package ably_test
 
 import (
 	"testing"

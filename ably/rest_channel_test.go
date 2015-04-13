@@ -1,11 +1,10 @@
-package rest_test
+package ably_test
 
 import (
 	. "github.com/ably/ably-go/Godeps/_workspace/src/github.com/onsi/ginkgo"
 	. "github.com/ably/ably-go/Godeps/_workspace/src/github.com/onsi/gomega"
-	"github.com/ably/ably-go/config"
+	"github.com/ably/ably-go/ably"
 	"github.com/ably/ably-go/proto"
-	"github.com/ably/ably-go/rest"
 )
 
 var _ = Describe("RestChannel", func() {
@@ -31,7 +30,7 @@ var _ = Describe("RestChannel", func() {
 	})
 
 	Describe("History", func() {
-		var historyRestChannel *rest.RestChannel
+		var historyRestChannel *ably.RestChannel
 
 		BeforeEach(func() {
 			historyRestChannel = client.RestChannel("history")
@@ -42,7 +41,7 @@ var _ = Describe("RestChannel", func() {
 		})
 
 		It("returns a paginated result", func() {
-			page1, err := historyRestChannel.History(&config.PaginateParams{Limit: 1})
+			page1, err := historyRestChannel.History(&ably.PaginateParams{Limit: 1})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(len(page1.Messages())).To(Equal(1))
 			Expect(len(page1.Items())).To(Equal(1))
@@ -55,7 +54,7 @@ var _ = Describe("RestChannel", func() {
 	})
 
 	Describe("PublishAll", func() {
-		var encodingRestChannel *rest.RestChannel
+		var encodingRestChannel *ably.RestChannel
 
 		BeforeEach(func() {
 			encodingRestChannel = client.RestChannel("encoding")
@@ -69,7 +68,7 @@ var _ = Describe("RestChannel", func() {
 			err := encodingRestChannel.PublishAll(messages)
 			Expect(err).NotTo(HaveOccurred())
 
-			page, err := encodingRestChannel.History(&config.PaginateParams{Limit: 2})
+			page, err := encodingRestChannel.History(&ably.PaginateParams{Limit: 2})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(len(page.Messages())).To(Equal(2))
 			Expect(len(page.Items())).To(Equal(2))

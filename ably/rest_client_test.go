@@ -1,4 +1,4 @@
-package rest_test
+package ably_test
 
 import (
 	"bytes"
@@ -12,9 +12,8 @@ import (
 	"time"
 
 	"github.com/ably/ably-go/Godeps/_workspace/src/gopkg.in/vmihailenco/msgpack.v2"
-	"github.com/ably/ably-go/config"
+	"github.com/ably/ably-go/ably"
 	"github.com/ably/ably-go/proto"
-	"github.com/ably/ably-go/rest"
 
 	. "github.com/ably/ably-go/Godeps/_workspace/src/github.com/onsi/ginkgo"
 	. "github.com/ably/ably-go/Godeps/_workspace/src/github.com/onsi/gomega"
@@ -65,7 +64,7 @@ var _ = Describe("RestClient", func() {
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(Equal("Unexpected status code 404"))
 
-				httpError, ok := err.(*rest.RestHttpError)
+				httpError, ok := err.(*ably.RestHttpError)
 				Expect(ok).To(BeTrue())
 				Expect(httpError.ResponseBody).To(Equal(`{"error":"Not Found"}`))
 			})
@@ -77,7 +76,7 @@ var _ = Describe("RestClient", func() {
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(Equal("Unexpected status code 404"))
 
-				httpError, ok := err.(*rest.RestHttpError)
+				httpError, ok := err.(*ably.RestHttpError)
 				Expect(ok).To(BeTrue())
 				Expect(httpError.ResponseBody).To(Equal(`{"error":"Not Found"}`))
 			})
@@ -105,8 +104,8 @@ var _ = Describe("RestClient", func() {
 		Context("with JSON encoding set up", func() {
 			BeforeEach(func() {
 				testParamsCopy := testApp.Params
-				testParamsCopy.Protocol = config.ProtocolJSON
-				client = rest.NewRestClient(testParamsCopy)
+				testParamsCopy.Protocol = ably.ProtocolJSON
+				client = ably.NewRestClient(testParamsCopy)
 
 				client.RestEndpoint = strings.Replace(client.RestEndpoint, "https", "http", 1)
 				client.HTTPClient = createMockedRestClient(server)
@@ -125,8 +124,8 @@ var _ = Describe("RestClient", func() {
 		Context("with msgpack encoding set up", func() {
 			BeforeEach(func() {
 				testParamsCopy := testApp.Params
-				testParamsCopy.Protocol = config.ProtocolMsgPack
-				client = rest.NewRestClient(testParamsCopy)
+				testParamsCopy.Protocol = ably.ProtocolMsgPack
+				client = ably.NewRestClient(testParamsCopy)
 
 				client.RestEndpoint = strings.Replace(client.RestEndpoint, "https", "http", 1)
 				client.HTTPClient = createMockedRestClient(server)
@@ -195,10 +194,10 @@ var _ = Describe("RestClient", func() {
 
 		It("parses stats from the rest api", func() {
 			longAgo := lastInterval.Add(-120 * time.Minute)
-			page, err := client.Stats(&config.PaginateParams{
+			page, err := client.Stats(&ably.PaginateParams{
 				Limit: 1,
-				ScopeParams: config.ScopeParams{
-					Start: config.NewTimestamp(longAgo),
+				ScopeParams: ably.ScopeParams{
+					Start: ably.NewTimestamp(longAgo),
 					Unit:  proto.StatGranularityMinute,
 				},
 			})

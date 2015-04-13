@@ -1,9 +1,6 @@
-package rest
+package ably
 
-import (
-	"github.com/ably/ably-go/config"
-	"github.com/ably/ably-go/proto"
-)
+import "github.com/ably/ably-go/proto"
 
 type RestChannel struct {
 	Name     string
@@ -51,7 +48,7 @@ func (c *RestChannel) PublishAll(messages []*proto.Message) error {
 // History gives the channel's message history according to the given parameters.
 // The returned resource can be inspected for the messages via the Messages()
 // method.
-func (c *RestChannel) History(params *config.PaginateParams) (*proto.PaginatedResource, error) {
+func (c *RestChannel) History(params *PaginateParams) (*PaginatedResource, error) {
 	path := "/channels/" + c.Name + "/history"
-	return proto.NewPaginatedResource(msgType, path, params, query(c.client.Get))
+	return NewPaginatedResource(msgType, path, params, query(c.client.Get))
 }

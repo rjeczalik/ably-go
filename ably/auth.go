@@ -1,4 +1,4 @@
-package rest
+package ably
 
 import (
 	"fmt"
@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 
 	"github.com/ably/ably-go/Godeps/_workspace/src/github.com/flynn/flynn/pkg/random"
-	"github.com/ably/ably-go/config"
 )
 
 type Capability map[string][]string
@@ -72,11 +71,11 @@ func (t *TokenRequest) Sign(secret string) {
 }
 
 type Auth struct {
-	config.Params
+	Params
 	client *RestClient
 }
 
-func NewAuth(params config.Params, client *RestClient) *Auth {
+func NewAuth(params Params, client *RestClient) *Auth {
 	return &Auth{
 		Params: params,
 		client: client,

@@ -1,4 +1,4 @@
-package proto
+package ably
 
 import (
 	"encoding/json"
@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/ably/ably-go/config"
+	"github.com/ably/ably-go/proto"
 )
 
 // relLinkRegexp is the regexp that matches our pagination format
@@ -41,7 +41,7 @@ type PaginatedResource struct {
 
 // NewPaginatedResource returns a new instance of PaginatedResource
 // It needs to be a struct implementing ResourceReader which in our case is rest.RestClient.
-func NewPaginatedResource(typ reflect.Type, path string, params *config.PaginateParams,
+func NewPaginatedResource(typ reflect.Type, path string, params *PaginateParams,
 	query QueryFunc) (*PaginatedResource, error) {
 	p := &PaginatedResource{
 		typ:   typ,
@@ -95,8 +95,8 @@ func (p *PaginatedResource) Items() []interface{} {
 
 // Messages gives a slice of messages for the current page. The method panics if
 // the underlying paginated resource is not a message.
-func (p *PaginatedResource) Messages() []*Message {
-	items, ok := p.typItems.([]*Message)
+func (p *PaginatedResource) Messages() []*proto.Message {
+	items, ok := p.typItems.([]*proto.Message)
 	if !ok {
 		panic(errInvalidType{typ: p.typ})
 	}
@@ -105,8 +105,8 @@ func (p *PaginatedResource) Messages() []*Message {
 
 // PresenceMessages gives a slice of presence messages for the current path.
 // The method panics if the underlying paginated resource is not a presence message.
-func (p *PaginatedResource) PresenceMessages() []*PresenceMessage {
-	items, ok := p.typItems.([]*PresenceMessage)
+func (p *PaginatedResource) PresenceMessages() []*proto.PresenceMessage {
+	items, ok := p.typItems.([]*proto.PresenceMessage)
 	if !ok {
 		panic(errInvalidType{typ: p.typ})
 	}
@@ -115,15 +115,15 @@ func (p *PaginatedResource) PresenceMessages() []*PresenceMessage {
 
 // Stats gives a slice of statistics for the current page. The method panics if
 // the underlying paginated resource is not statistics.
-func (p *PaginatedResource) Stats() []*Stat {
-	items, ok := p.typItems.([]*Stat)
+func (p *PaginatedResource) Stats() []*proto.Stat {
+	items, ok := p.typItems.([]*proto.Stat)
 	if !ok {
 		panic(errInvalidType{typ: p.typ})
 	}
 	return items
 }
 
-func (c *PaginatedResource) buildPaginatedPath(path string, params *config.PaginateParams) (string, error) {
+func (c *PaginatedResource) buildPaginatedPath(path string, params *PaginateParams) (string, error) {
 	if params == nil {
 		return path, nil
 	}
