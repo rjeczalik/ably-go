@@ -10,9 +10,9 @@ import (
 	. "github.com/ably/ably-go/Godeps/_workspace/src/github.com/onsi/gomega"
 )
 
-func TestRest(t *testing.T) {
+func TestAbly(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Rest Suite")
+	RunSpecs(t, "Ably Suite")
 }
 
 var (
