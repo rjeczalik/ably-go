@@ -1,4 +1,4 @@
-package realtime
+package ably
 
 import (
 	"fmt"
@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ably/ably-go/ably"
 	"github.com/ably/ably-go/proto"
 
 	"github.com/ably/ably-go/Godeps/_workspace/src/code.google.com/p/go.net/websocket"
@@ -28,7 +27,7 @@ const (
 type ConnListener func()
 
 type Conn struct {
-	ably.Params
+	Params
 
 	ID        string
 	stateChan chan ConnState
@@ -43,7 +42,7 @@ type Conn struct {
 	listenerMtx sync.RWMutex
 }
 
-func NewConn(params ably.Params) *Conn {
+func NewConn(params Params) *Conn {
 	c := &Conn{
 		Params:    params,
 		state:     ConnStateInitialized,
@@ -87,7 +86,7 @@ func (c *Conn) Close() {
 	c.ws.Close()
 }
 
-func (c *Conn) websocketUrl(token *ably.Token) (*url.URL, error) {
+func (c *Conn) websocketUrl(token *Token) (*url.URL, error) {
 	u, err := url.Parse(c.Params.RealtimeEndpoint + "?access_token=" + token.ID + "&binary=false&timestamp=" + strconv.Itoa(int(time.Now().Unix())))
 	if err != nil {
 		return nil, err
@@ -105,8 +104,8 @@ func (c *Conn) Connect() error {
 
 	c.setState(ConnStateConnecting)
 
-	restRealtimeClient := ably.NewRestClient(c.Params)
-	token, err := restRealtimeClient.Auth.RequestToken(60*60, ably.Capability{"*": []string{"*"}})
+	restRealtimeClient := NewRestClient(c.Params)
+	token, err := restRealtimeClient.Auth.RequestToken(60*60, Capability{"*": []string{"*"}})
 	if err != nil {
 		return fmt.Errorf("Error fetching token: %s", err)
 	}

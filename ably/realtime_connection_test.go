@@ -1,19 +1,19 @@
-package realtime_test
+package ably_test
 
 import (
 	"sync"
 
-	"github.com/ably/ably-go/realtime"
+	"github.com/ably/ably-go/ably"
 
 	. "github.com/ably/ably-go/Godeps/_workspace/src/github.com/onsi/ginkgo"
 	. "github.com/ably/ably-go/Godeps/_workspace/src/github.com/onsi/gomega"
 )
 
 var _ = Describe("Connection", func() {
-	var client *realtime.RealtimeClient
+	var client *ably.RealtimeClient
 
 	BeforeEach(func() {
-		client = realtime.NewRealtimeClient(testApp.Params)
+		client = ably.NewRealtimeClient(testApp.Params)
 	})
 
 	AfterEach(func() {
@@ -26,9 +26,9 @@ var _ = Describe("Connection", func() {
 	})
 
 	It("connects to ably on initialization", func() {
-		Eventually(func() (state realtime.ConnState) {
+		Eventually(func() (state ably.ConnState) {
 			return client.Connection.State()
-		}, "2s").Should(Equal(realtime.ConnStateConnected))
+		}, "2s").Should(Equal(ably.ConnStateConnected))
 	})
 
 	It("accepts calls to Connect even if it is connecting now", func() {
@@ -38,15 +38,15 @@ var _ = Describe("Connection", func() {
 
 	Context("with normal connection workflow", func() {
 		var (
-			phases          []realtime.ConnState
-			eventsTriggered []realtime.ConnState
+			phases          []ably.ConnState
+			eventsTriggered []ably.ConnState
 			mu              sync.RWMutex
 		)
 
 		BeforeEach(func() {
-			phases = []realtime.ConnState{
-				realtime.ConnStateConnecting,
-				realtime.ConnStateConnected,
+			phases = []ably.ConnState{
+				ably.ConnStateConnecting,
+				ably.ConnStateConnected,
 			}
 		})
 
@@ -55,7 +55,7 @@ var _ = Describe("Connection", func() {
 
 			wg.Add(len(phases))
 			for i := range phases {
-				client.Connection.On(phases[i], func(state realtime.ConnState) func() {
+				client.Connection.On(phases[i], func(state ably.ConnState) func() {
 					return func() {
 						mu.Lock()
 						defer mu.Unlock()

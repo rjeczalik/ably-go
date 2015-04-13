@@ -1,7 +1,7 @@
-package realtime_test
+package ably_test
 
 import (
-	"github.com/ably/ably-go/realtime"
+	"github.com/ably/ably-go/ably"
 
 	. "github.com/ably/ably-go/Godeps/_workspace/src/github.com/onsi/ginkgo"
 	. "github.com/ably/ably-go/Godeps/_workspace/src/github.com/onsi/gomega"
@@ -9,12 +9,12 @@ import (
 
 var _ = Describe("RealtimeChannel", func() {
 	var (
-		client  *realtime.RealtimeClient
-		channel *realtime.RealtimeChannel
+		client  *ably.RealtimeClient
+		channel *ably.RealtimeChannel
 	)
 
 	BeforeEach(func() {
-		client = realtime.NewRealtimeClient(testApp.Params)
+		client = ably.NewRealtimeClient(testApp.Params)
 		channel = client.RealtimeChannel("test")
 	})
 
