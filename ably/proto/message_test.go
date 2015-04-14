@@ -2,12 +2,56 @@ package proto_test
 
 import (
 	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/ably/ably-go/ably/proto"
 
 	. "github.com/ably/ably-go/Godeps/_workspace/src/github.com/onsi/ginkgo"
 	. "github.com/ably/ably-go/Godeps/_workspace/src/github.com/onsi/gomega"
 )
+
+type CryptoData struct {
+	Algorithm string `json:"algorithm"`
+	Mode      string `json:"mode"`
+	KeyLen    int    `json:"keylength"`
+	Key       string `json:"key"`
+	IV        string `json:"iv"`
+	Items     []struct {
+		Encoded   proto.Message `json:"encoded"`
+		Encrypted proto.Message `json:"encrypted"`
+	} `json:"items"`
+}
+
+func load(rel string, t GinkgoTInterface) (*CryptoData, map[string]string) {
+	data := &CryptoData{}
+	path := filepath.Join("..", "..", "common", filepath.FromSlash(rel))
+	f, err := os.Open(path)
+	if err != nil {
+		fmt.Println(err)
+		fmt.Println(err)
+		t.Skip("ensure the git submodules are initialized", err)
+	}
+	err = json.NewDecoder(f).Decode(data)
+	f.Close()
+	if err != nil {
+		fmt.Println(err)
+		t.Fatal("unable to unmarshal test cases", err)
+	}
+	key, err := base64.StdEncoding.DecodeString(data.Key)
+	if err != nil {
+		fmt.Println(err)
+		t.Fatal("unable to unbase64 key", err)
+	}
+	iv, err := base64.StdEncoding.DecodeString(data.IV)
+	if err != nil {
+		fmt.Println(err)
+		t.Fatal("unable to unbase64 IV", err)
+	}
+	return data, map[string]string{"key": string(key), "iv": string(iv)}
+}
 
 var _ = Describe("Message", func() {
 	var (
@@ -171,5 +215,45 @@ var _ = Describe("Message", func() {
 				Expect(message.Data).To(Equal(encodedData))
 			})
 		})
+	})
+
+	acceptance := func(fixture string, t GinkgoTInterface) {
+		test, cfg := load(fixture, t)
+
+		It("fixture decode", func() {
+			for i, item := range test.Items {
+				if i != 1 {
+					continue
+				}
+				err := item.Encrypted.DecodeData(cfg)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(item.Encrypted.Name).To(Equal(item.Encoded.Name))
+				Expect(item.Encrypted.Data).To(Equal(item.Encoded.Data))
+			}
+		})
+
+		return
+
+		It("fixture encode", func() {
+			for i, item := range test.Items {
+				if i != 1 {
+					continue
+				}
+				err := item.Encoded.EncodeData(item.Encrypted.Encoding, cfg)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(item.Encoded.Name).To(Equal(item.Encrypted.Name))
+				Expect(item.Encoded.Data).To(Equal(item.Encrypted.Data))
+			}
+		})
+	}
+
+	Describe("CryptoDataFixtures", func() {
+		FContext("with a 128 keylength", func() {
+			acceptance("test-resources/crypto-data-128.json", GinkgoT())
+		})
+
+		// Context("with a 256 keylength", func() {
+		//   acceptance("test-resources/crypto-data-256.json", GinkgoT())
+		// })
 	})
 })

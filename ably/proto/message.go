@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"log"
 	"strconv"
 	"strings"
 )
@@ -35,7 +36,6 @@ func (m *Message) DecodeData(keys map[string]string) error {
 			if err != nil {
 				return err
 			}
-
 			m.Data = string(data)
 			continue
 
@@ -60,24 +60,22 @@ func (m *Message) DecodeData(keys map[string]string) error {
 // EncodeData will return an error.
 func (m *Message) EncodeData(encoding string, keys map[string]string) error {
 	m.Encoding = ""
-	encodings := strings.Split(encoding, "/")
-	for i := 0; i < len(encodings); i++ {
-		switch encodings[i] {
+	for _, encoding := range strings.Split(encoding, "/") {
+		switch encoding {
 		case "base64":
 			m.Data = base64.StdEncoding.EncodeToString([]byte(m.Data))
-			m.mergeEncoding(encodings[i])
+			m.mergeEncoding(encoding)
 			continue
 		case "json", "utf-8":
-			m.mergeEncoding(encodings[i])
+			m.mergeEncoding(encoding)
 			continue
 		default:
-			if err := m.Encrypt(encodings[i], keys); err != nil {
+			if err := m.Encrypt(encoding, keys); err != nil {
 				return err
 			}
 			continue
 		}
 	}
-
 	return nil
 }
 
@@ -91,17 +89,20 @@ func (m *Message) getKeyLen(cipherStr string) int64 {
 	cipherParts := strings.Split(cipherConf[1], "-")
 
 	if cipherParts[0] != "aes" {
+		log.Println("unknown encryption algo")
 		// TODO log unknown encryption algorithm
 		return 0
 	}
 
 	if cipherParts[2] != "cbc" {
+		log.Println("unknown mode")
 		// TODO log unknown mode
 		return 0
 	}
 
 	keylen, err := strconv.ParseInt(cipherParts[1], 10, 0)
 	if err != nil {
+		log.Println("parsing error")
 		// TODO parsing error
 		return 0
 	}
@@ -122,10 +123,14 @@ func (m *Message) Decrypt(cipherStr string, keys map[string]string) error {
 	iv := m.Data[:aes.BlockSize]
 	m.Data = m.Data[aes.BlockSize:]
 
+	log.Printf("len(iv)=%d, max=%d\n", len(iv), aes.BlockSize)
+
 	out := make([]byte, len(m.Data))
 
 	blockMode := cipher.NewCBCDecrypter(block, []byte(iv))
 	blockMode.CryptBlocks(out, []byte(m.Data))
+
+	fmt.Printf("m.Data=%s (before), out=%s (after)", m.Data, out)
 
 	newData, err := pkcs7Unpad(out, aes.BlockSize)
 	if err != nil {
@@ -133,6 +138,9 @@ func (m *Message) Decrypt(cipherStr string, keys map[string]string) error {
 	}
 
 	m.Data = string(newData)
+
+	fmt.Printf("newData=%s, m.Data=%s", newData, m.Data)
+
 	return nil
 }
 
