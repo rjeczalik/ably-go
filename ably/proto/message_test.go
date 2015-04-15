@@ -2,10 +2,14 @@ package proto_test
 
 import (
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"testing"
 
 	"github.com/ably/ably-go/ably/proto"
 
@@ -257,3 +261,62 @@ var _ = Describe("Message", func() {
 		// })
 	})
 })
+
+func nonil(err ...error) error {
+	for _, err := range err {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func tmpwrite(s string) string {
+	f, err := ioutil.TempFile("/tmp", "crypto-test")
+	if err != nil {
+		panic(err)
+	}
+	if _, err = f.WriteString(s); err != nil {
+		panic(err)
+	}
+	if err = nonil(f.Sync(), f.Close()); err != nil {
+		panic(err)
+	}
+	return f.Name()
+}
+
+func tohex(s string) string {
+	p, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		panic(err)
+	}
+	return hex.EncodeToString(p)
+}
+
+func TestDebug(t *testing.T) {
+	test, cfg := load("test-resources/crypto-data-128.json", t)
+	key := hex.EncodeToString([]byte(cfg["key"]))
+	for _, item := range test.Items {
+		fmt.Println(item.Encrypted.Data)
+		encrypted, err := base64.StdEncoding.DecodeString(item.Encrypted.Data)
+		if err != nil {
+			panic(err)
+		}
+		iv := hex.EncodeToString(encrypted[:16])
+		enc := tmpwrite(string(encrypted[16:]))
+		cmd := exec.Command("openssl", "aes-128-cbc", "-d", "-K", key, "-iv", iv, "-in", enc)
+		fmt.Println(cmd)
+		// cmd.Stdin = bytes.NewReader(encrypted)
+		//fmt.Println(len(encrypted), cmd)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			fmt.Println(err, string(out))
+			continue
+		}
+		//got, err := base64.StdEncoding.DecodeString(string(bytes.TrimSpace(out)))
+		//if err != nil {
+		//	panic(err)
+		//}
+		fmt.Printf("got: %v, want: %s\n", out, item.Encoded.Data)
+	}
+}
