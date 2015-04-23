@@ -15,6 +15,7 @@ type RestHttpError struct {
 func NewRestHttpError(response *http.Response, message string) *RestHttpError {
 	err := &RestHttpError{Response: response, Msg: message}
 	err.readBody()
+	err.Response = nil
 	return err
 }
 

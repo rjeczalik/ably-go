@@ -4,14 +4,16 @@ import (
 	"bytes"
 	_ "crypto/sha512"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"reflect"
 	"sync"
 	"time"
 
-	"github.com/ably/ably-go/Godeps/_workspace/src/gopkg.in/vmihailenco/msgpack.v2"
 	"github.com/ably/ably-go/ably/proto"
+
+	"github.com/ably/ably-go/Godeps/_workspace/src/gopkg.in/vmihailenco/msgpack.v2"
 )
 
 var (
@@ -27,36 +29,43 @@ func query(fn func(string, interface{}) (*http.Response, error)) QueryFunc {
 }
 
 type RestClient struct {
-	Auth *Auth
+	Options *ClientOptions
 
-	RestEndpoint string
-	Protocol     string
-
-	HTTPClient *http.Client
-
-	channels map[string]*RestChannel
-	chanMtx  sync.Mutex
+	mtx   sync.Mutex // protects chans
+	chans map[string]*RestChannel
+	auth  *Auth
 }
 
-func NewRestClient(options ClientOptions) *RestClient {
-	options.Prepare()
-	client := &RestClient{
-		RestEndpoint: options.RestEndpoint,
-		HTTPClient:   options.HTTPClient,
-		channels:     make(map[string]*RestChannel),
+func NewRestClient(key string) *RestClient {
+	var opts ClientOptions
+	if err := opts.SetKey(key); err != nil {
+		panic("ably: NewRestClient using " + err.Error())
 	}
-
-	client.Auth = NewAuth(&options, client)
-	client.Protocol = options.Protocol
-
-	return client
+	return &RestClient{Options: &opts}
 }
 
-func (c *RestClient) httpclient() *http.Client {
-	if c.HTTPClient != nil {
-		return c.HTTPClient
+func (c *RestClient) options() *ClientOptions {
+	if c.Options != nil {
+		return c.Options
 	}
-	return http.DefaultClient
+	return DefaultOptions
+}
+
+func (c *RestClient) lazychans() map[string]*RestChannel {
+	if c.chans == nil {
+		c.chans = make(map[string]*RestChannel)
+	}
+	return c.chans
+}
+
+func (c *RestClient) Auth() *Auth {
+	if c.auth == nil {
+		c.auth = &Auth{
+			options: c.Options,
+			client:  c,
+		}
+	}
+	return c.auth
 }
 
 func (c *RestClient) Time() (time.Time, error) {
@@ -66,21 +75,19 @@ func (c *RestClient) Time() (time.Time, error) {
 		return time.Time{}, err
 	}
 	if len(times) != 1 {
-		return time.Time{}, fmt.Errorf("Expected 1 timestamp, got %d", len(times))
+		return time.Time{}, fmt.Errorf("expected 1 timestamp, got %d", len(times))
 	}
 	return time.Unix(times[0]/1000, times[0]%1000), nil
 }
 
 func (c *RestClient) Channel(name string) *RestChannel {
-	c.chanMtx.Lock()
-	defer c.chanMtx.Unlock()
-
-	if ch, ok := c.channels[name]; ok {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	if ch, ok := c.lazychans()[name]; ok {
 		return ch
 	}
-
 	ch := newRestChannel(name, c)
-	c.channels[name] = ch
+	c.chans[name] = ch
 	return ch
 }
 
@@ -92,27 +99,24 @@ func (c *RestClient) Stats(params *PaginateParams) (*PaginatedResource, error) {
 }
 
 func (c *RestClient) Get(path string, out interface{}) (*http.Response, error) {
-	req, err := http.NewRequest("GET", c.RestEndpoint+path, nil)
+	req, err := http.NewRequest("GET", c.options().RestEndpoint+path, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/json")
-	req.SetBasicAuth(c.Auth.Options.Token, c.Auth.Options.Secret)
-	res, err := c.httpclient().Do(req)
-
+	// TODO(rjeczalik): add support for token auth
+	req.SetBasicAuth(c.options().Token, c.options().Secret)
+	res, err := c.options().httpclient().Do(req)
 	if err != nil {
 		return nil, err
 	}
-
 	if !c.ok(res.StatusCode) {
 		return res, NewRestHttpError(res, fmt.Sprintf("Unexpected status code %d", res.StatusCode))
 	}
-
 	if out != nil {
 		defer res.Body.Close()
 		return res, json.NewDecoder(res.Body).Decode(out)
 	}
-
 	return res, nil
 }
 
@@ -121,21 +125,22 @@ func (c *RestClient) Post(path string, in, out interface{}) (*http.Response, err
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest("POST", c.RestEndpoint+path, bytes.NewBuffer(buf))
+	req, err := http.NewRequest("POST", c.options().RestEndpoint+path, bytes.NewBuffer(buf))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	req.SetBasicAuth(c.Auth.Options.Token, c.Auth.Options.Secret)
-	res, err := c.httpclient().Do(req)
+	// TODO(rjeczalik): add support for token auth
+	req.SetBasicAuth(c.options().Token, c.options().Secret)
+	res, err := c.options().httpclient().Do(req)
 	if err != nil {
 		return nil, err
 	}
 	if !c.ok(res.StatusCode) {
 		return res, NewRestHttpError(res, fmt.Sprintf("Unexpected status code %d", res.StatusCode))
 	}
-	if out != nil && c.ok(res.StatusCode) {
+	if out != nil {
 		defer res.Body.Close()
 		return res, json.NewDecoder(res.Body).Decode(out)
 	}
@@ -147,13 +152,12 @@ func (c *RestClient) ok(status int) bool {
 }
 
 func (c *RestClient) marshalMessages(in interface{}) ([]byte, error) {
-	switch c.Protocol {
+	switch proto := c.options().protocol(); proto {
 	case ProtocolJSON:
 		return json.Marshal(in)
 	case ProtocolMsgPack:
 		return msgpack.Marshal(in)
 	default:
-		// TODO log fallback to default encoding
-		return json.Marshal(in)
+		return nil, errors.New(`invalid protocol: "` + proto + `"`)
 	}
 }

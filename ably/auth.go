@@ -88,21 +88,14 @@ func (req *TokenRequest) sign(secret []byte) {
 }
 
 type Auth struct {
-	Options *ClientOptions
+	options *ClientOptions
 	client  *RestClient
-}
-
-func NewAuth(options *ClientOptions, client *RestClient) *Auth {
-	return &Auth{
-		Options: options,
-		client:  client,
-	}
 }
 
 func (a *Auth) CreateTokenRequest() *TokenRequest {
 	return &TokenRequest{
-		KeyName:  a.Options.Token,
-		ClientID: a.Options.ClientID,
+		KeyName:  a.options.Token,
+		ClientID: a.options.ClientID,
 	}
 }
 
@@ -110,7 +103,7 @@ func (a *Auth) RequestToken(req *TokenRequest) (*Token, error) {
 	if req == nil {
 		req = a.CreateTokenRequest()
 	}
-	req.sign([]byte(a.Options.Secret))
+	req.sign([]byte(a.options.Secret))
 	resp := &Token{}
 	_, err := a.client.Post("/keys/"+req.KeyName+"/requestToken", req, resp)
 	if err != nil {

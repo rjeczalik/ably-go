@@ -43,8 +43,17 @@ type testAppConfig struct {
 }
 
 type App struct {
-	Options ably.ClientOptions
-	Config  testAppConfig
+	Config testAppConfig
+	opts   *ably.ClientOptions
+}
+
+func (t *App) Options() *ably.ClientOptions {
+	opts := *t.opts
+	if opts.HTTPClient != nil {
+		cli := *opts.HTTPClient
+		opts.HTTPClient = &cli
+	}
+	return &opts
 }
 
 func (t *App) AppKeyValue() string {
@@ -64,9 +73,17 @@ func (t *App) populate(res *http.Response) error {
 		return err
 	}
 
-	t.Options.Key = t.AppKeyId() + ":" + t.AppKeyValue()
+	t.opts.Token = t.AppKeyId()
+	t.opts.Secret = t.AppKeyValue()
 
 	return nil
+}
+
+func (t *App) httpclient() *http.Client {
+	if t.Options != nil && t.opts.HTTPClient != nil {
+		return t.opts.HTTPClient
+	}
+	return http.DefaultClient
 }
 
 func (t *App) Create() (*http.Response, error) {
@@ -74,14 +91,14 @@ func (t *App) Create() (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest("POST", t.Options.RestEndpoint+"/apps", bytes.NewBuffer(buf))
+	req, err := http.NewRequest("POST", t.opts.RestEndpoint+"/apps", bytes.NewBuffer(buf))
 	if err != nil {
 		return nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	res, err := t.Options.HTTPClient.Do(req)
+	res, err := t.httpclient().Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -105,13 +122,13 @@ func (t *App) Create() (*http.Response, error) {
 }
 
 func (t *App) Delete() (*http.Response, error) {
-	req, err := http.NewRequest("DELETE", t.Options.RestEndpoint+"/apps/"+t.Config.ApiID, nil)
+	req, err := http.NewRequest("DELETE", t.opts.RestEndpoint+"/apps/"+t.Config.ApiID, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	req.SetBasicAuth(t.AppKeyId(), t.AppKeyValue())
-	res, err := t.Options.HTTPClient.Do(req)
+	res, err := t.httpclient().Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -133,21 +150,22 @@ func (t *App) Delete() (*http.Response, error) {
 var timeout = 10 * time.Second
 
 func NewApp() *App {
-	client := &http.Client{
-		Timeout: timeout,
-		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-			Dial: (&net.Dialer{
-				Timeout:   timeout,
-				KeepAlive: timeout,
-			}).Dial,
-			TLSHandshakeTimeout: timeout,
-		},
-	}
+	var client *http.Client
 
 	// Don't verify hostname - for use with proxies for testing purposes.
 	if os.Getenv("HTTP_PROXY") != "" {
-		client.Transport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+		client = &http.Client{
+			Timeout: timeout,
+			Transport: &http.Transport{
+				Proxy: http.ProxyFromEnvironment,
+				Dial: (&net.Dialer{
+					Timeout:   timeout,
+					KeepAlive: timeout,
+				}).Dial,
+				TLSHandshakeTimeout: timeout,
+				TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
+			},
+		}
 	}
 
 	environment := "sandbox"
@@ -156,7 +174,7 @@ func NewApp() *App {
 	}
 
 	return &App{
-		Options: ably.ClientOptions{
+		opts: &ably.ClientOptions{
 			RealtimeEndpoint: fmt.Sprintf("wss://%s-realtime.ably.io:443", environment),
 			RestEndpoint:     fmt.Sprintf("https://%s-rest.ably.io", environment),
 			HTTPClient:       client,

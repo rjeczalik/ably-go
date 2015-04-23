@@ -1,6 +1,7 @@
 package ably
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -14,36 +15,72 @@ const (
 	ProtocolMsgPack = "msgpack"
 )
 
+var errInvalidKey = errors.New("invalid key format")
+
+var DefaultOptions = &ClientOptions{
+	RestEndpoint:     "https://rest.ably.io",
+	RealtimeEndpoint: "wss://realtime.ably.io:443",
+	Protocol:         ProtocolJSON, // TODO: make it ProtocolMsgPack
+}
+
 type ClientOptions struct {
-	RealtimeEndpoint string
 	RestEndpoint     string
-	Key              string
+	RealtimeEndpoint string
 	Token            string
 	Secret           string
 	ClientID         string
-	Protocol         string
+	Protocol         string // either ProtocolJSON or ProtocolMsgPack
 	UseTokenAuth     bool
-	NoTLS            bool
 
 	HTTPClient *http.Client
 }
 
-func (p *ClientOptions) Prepare() {
-	if p.Key != "" {
-		p.parseKey()
+var (
+	restTLS       = strings.NewReplacer("http://", "https://")
+	restNoTLS     = strings.NewReplacer("https://", "http://")
+	realtimeTLS   = strings.NewReplacer("ws://", "wss://", ":443", ":80")
+	realtimeNoTLS = strings.NewReplacer("wss://", "ws://", ":80", ":443")
+)
+
+func (opts *ClientOptions) SetTLS(enabled bool) {
+	if enabled {
+		opts.RestEndpoint = restTLS.Replace(opts.RestEndpoint)
+		opts.RealtimeEndpoint = realtimeTLS.Replace(opts.RealtimeEndpoint)
+	} else {
+		opts.RestEndpoint = restNoTLS.Replace(opts.RestEndpoint)
+		opts.RealtimeEndpoint = realtimeNoTLS.Replace(opts.RealtimeEndpoint)
 	}
 }
 
-func (p *ClientOptions) parseKey() {
-	keyParts := strings.Split(p.Key, ":")
-
-	if len(keyParts) != 2 {
-		Log.Print(LogError, "invalid key format, ignoring")
-		return
+func (opts *ClientOptions) SetKey(key string) error {
+	s := strings.Split(key, ":")
+	if len(s) != 2 {
+		return errInvalidKey
 	}
+	opts.Token = s[0]
+	opts.Secret = s[1]
+	return nil
+}
 
-	p.Token = keyParts[0]
-	p.Secret = keyParts[1]
+func (opts *ClientOptions) Key() string {
+	if opts.Token == "" || opts.Secret == "" {
+		return ""
+	}
+	return opts.Token + ":" + opts.Secret
+}
+
+func (opts *ClientOptions) httpclient() *http.Client {
+	if opts.HTTPClient != nil {
+		return opts.HTTPClient
+	}
+	return http.DefaultClient
+}
+
+func (opts *ClientOptions) protocol() string {
+	if opts.Protocol != "" {
+		return opts.Protocol
+	}
+	return ProtocolJSON // TODO: make it ProtocolMsgPack
 }
 
 // Timestamp returns the given time as a timestamp in milliseconds since epoch.
@@ -68,19 +105,15 @@ func (s *ScopeParams) EncodeValues(out *url.Values) error {
 	if s.Start != 0 && s.End != 0 && s.Start > s.End {
 		return fmt.Errorf("start must be before end")
 	}
-
 	if s.Start != 0 {
 		out.Set("start", strconv.FormatInt(s.Start, 10))
 	}
-
 	if s.End != 0 {
 		out.Set("end", strconv.FormatInt(s.End, 10))
 	}
-
 	if s.Unit != "" {
 		out.Set("unit", s.Unit)
 	}
-
 	return nil
 }
 
@@ -96,7 +129,6 @@ func (p *PaginateParams) EncodeValues(out *url.Values) error {
 	} else if p.Limit != 0 {
 		out.Set("limit", strconv.Itoa(p.Limit))
 	}
-
 	switch p.Direction {
 	case "":
 		break
@@ -106,8 +138,6 @@ func (p *PaginateParams) EncodeValues(out *url.Values) error {
 	default:
 		return fmt.Errorf("Invalid value for direction: %s", p.Direction)
 	}
-
 	p.ScopeParams.EncodeValues(out)
-
 	return nil
 }

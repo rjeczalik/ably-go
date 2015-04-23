@@ -10,11 +10,11 @@ import (
 var _ = Describe("Auth", func() {
 	Describe("RequestToken", func() {
 		It("gets a token from the API", func() {
-			req := client.Auth.CreateTokenRequest()
+			req := client.Auth().CreateTokenRequest()
 			req.TTL = 60 * 60 * 1000
 			req.Capability = ably.Capability{"foo": []string{"publish"}}
 			req.ClientID = "client_string"
-			token, err := client.Auth.RequestToken(req)
+			token, err := client.Auth().RequestToken(req)
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(token.Token).To(ContainSubstring(testApp.Config.ApiID))
@@ -26,7 +26,7 @@ var _ = Describe("Auth", func() {
 
 	Describe("CreateTokenRequest", func() {
 		It("gets a token from the API", func() {
-			req := client.Auth.CreateTokenRequest()
+			req := client.Auth().CreateTokenRequest()
 			req.TTL = 60 * 60 * 1000
 			req.Capability = ably.Capability{"foo": []string{"publish"}}
 

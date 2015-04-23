@@ -1,60 +1,13 @@
 package ably_test
 
 import (
-	"log"
 	"net/url"
 
 	"github.com/ably/ably-go/ably"
 
 	. "github.com/ably/ably-go/Godeps/_workspace/src/github.com/onsi/ginkgo"
 	. "github.com/ably/ably-go/Godeps/_workspace/src/github.com/onsi/gomega"
-	"github.com/ably/ably-go/Godeps/_workspace/src/github.com/onsi/gomega/gbytes"
 )
-
-var _ = Describe("ClientOptions", func() {
-	var (
-		options *ably.ClientOptions
-		buffer  *gbytes.Buffer
-	)
-
-	BeforeEach(func() {
-		buffer = gbytes.NewBuffer()
-
-		options = &ably.ClientOptions{
-			Key: "id:secret",
-		}
-
-		options.Prepare()
-	})
-
-	It("parses Key into a set of known parameters", func() {
-		Expect(options.Token).To(Equal("id"))
-		Expect(options.Secret).To(Equal("secret"))
-	})
-
-	Context("when Key is invalid", func() {
-		var old *log.Logger
-
-		BeforeEach(func() {
-			old, ably.Log.Logger = ably.Log.Logger, log.New(buffer, "", log.Lmicroseconds|log.Llongfile)
-			options = &ably.ClientOptions{
-				Key: "invalid",
-			}
-
-			options.Prepare()
-		})
-
-		AfterEach(func() {
-			ably.Log.Logger = old
-		})
-
-		It("prints an error", func() {
-			Expect(string(buffer.Contents())).To(
-				ContainSubstring("ERROR: invalid key format, ignoring"),
-			)
-		})
-	})
-})
 
 var _ = Describe("ScopeParams", func() {
 	var (
