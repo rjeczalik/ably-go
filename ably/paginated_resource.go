@@ -1,8 +1,11 @@
 package ably
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -53,7 +56,13 @@ func newPaginatedResource(typ reflect.Type, path string, params *PaginateParams,
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	q, err := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		return nil, err
+	}
+	fmt.Printf("\n[DEBUG] newPaginatedResource(%v) = %s\n\n", typ, q)
+	resp.Body = ioutil.NopCloser(bytes.NewReader(q))
 	p.path = builtPath
 	p.links = resp.Header["Link"]
 	v := reflect.New(p.typ)
