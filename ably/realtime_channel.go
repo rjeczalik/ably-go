@@ -81,26 +81,23 @@ func (ch *Channels) Release(name string) error {
 }
 
 // RealtimeChannel represents a single named message channel.
-//
-// The name of the channel is read-only - assigning new name to it does not
-// have any effect.
 type RealtimeChannel struct {
-	Name string // read-only name of the channel
+	Name string // name used to create the channel
 
-	client    *RealtimeClient
-	state     *stateEmitter
-	err       error
-	listen    map[string]map[chan *proto.Message]struct{}
-	listenMtx sync.Mutex
-	queue     *msgQueue
+	client       *RealtimeClient
+	state        *stateEmitter
+	err          error
+	listeners    map[string]map[chan *proto.Message]struct{}
+	listenersMtx sync.Mutex
+	queue        *msgQueue
 }
 
 func newRealtimeChannel(name string, client *RealtimeClient) *RealtimeChannel {
 	c := &RealtimeChannel{
-		Name:   name,
-		client: client,
-		state:  newStateEmitter(StateChan, StateChanInitialized, name),
-		listen: make(map[string]map[chan *proto.Message]struct{}),
+		Name:      name,
+		client:    client,
+		state:     newStateEmitter(StateChan, StateChanInitialized, name),
+		listeners: make(map[string]map[chan *proto.Message]struct{}),
 	}
 	c.queue = newMsgQueue(client.Connection)
 	if c.client.opts.Listener != nil {
@@ -128,14 +125,18 @@ func (c *RealtimeChannel) Attach() error {
 	if !c.client.Connection.isActive() {
 		return c.state.set(StateChanFailed, errAttach)
 	}
-	msg := &proto.ProtocolMessage{Action: proto.ActionAttach, Channel: c.state.channel}
-	if err := c.client.Connection.send(msg, nil); err != nil {
+	wait := make(chan error, 1)
+	msg := &proto.ProtocolMessage{
+		Action:  proto.ActionAttach,
+		Channel: c.state.channel,
+	}
+	if err := c.client.Connection.send(msg, wait); err != nil {
 		return c.state.set(StateChanFailed, newErrorf(90000, "ably: Attach error: %s", err))
 	}
-	return nil
+	return <-wait
 }
 
-var errDetach = newError(90000, errors.New("ably: Detach on invactive connection"))
+var errDetach = newError(90000, errors.New("ably: Detach on inactive connection"))
 
 // Detach initiates detach request, which is being processed on a separate
 // goroutine.
@@ -154,15 +155,80 @@ func (c *RealtimeChannel) Detach() error {
 	if !c.client.Connection.isActive() {
 		return c.state.set(StateChanFailed, errDetach)
 	}
-	msg := &proto.ProtocolMessage{Action: proto.ActionDetach, Channel: c.state.channel}
-	if err := c.client.Connection.send(msg, nil); err != nil {
-		c.state.set(StateChanFailed, newErrorf(90000, "ably: Detch error: %s", err))
+	wait := make(chan error, 1)
+	msg := &proto.ProtocolMessage{
+		Action:  proto.ActionDetach,
+		Channel: c.state.channel,
 	}
-	return nil
+	if err := c.client.Connection.send(msg, wait); err != nil {
+		return c.state.set(StateChanFailed, newErrorf(90000, "ably: Detach error: %s", err))
+	}
+	return <-wait
 }
 
 func (c *RealtimeChannel) Close() error {
 	return errors.New("TODO")
+}
+
+type Subscription struct {
+	channel  *RealtimeChannel
+	queueMtx sync.Mutex
+	queue    []*proto.Message
+	ch       chan *proto.Message
+	sleep    chan struct{}
+}
+
+func newSubscription(channel *RealtimeChannel) *Subscription {
+	return &Subscription{
+		channel: channel,
+		ch:      ch,
+		sleep:   make(chan struct{}, 1),
+	}
+}
+
+func (sub *Subscription) C() <-chan *proto.Message {
+	return sub.ch
+}
+
+func (sub *Subscription) Close() error {
+	sub.channel.Unsubscribe(sub)
+	close(sub.sleep)
+	// Dry sub.ch to stop loop goroutine.
+	for {
+		select {
+		case <-sub.ch:
+		default:
+			return nil
+		}
+	}
+}
+
+func (sub *Subscription) enqueue(msg *proto.Message) {
+	sub.queueMtx.Lock()
+	sleeping := len(sub.queue) == 0
+	sub.queue = append(sub.queue, msg)
+	sub.queueMtx.Unlock()
+	if sleeping {
+		sub.sleep <- struct{}{} // this still races with sub.Close()
+	}
+}
+
+func (sub *Subscription) pop() (msg *proto.Message, n int) {
+	sub.queueMtx.Lock()
+	defer sub.queueMtx.Unlock()
+	if n = len(sub.queue); n == 0 {
+		return nil, 0
+	}
+	msg, sub.queue = sub.queue[0], sub.queue[1:]
+	return msg, n
+}
+
+func (sub *Subscription) loop() {
+	for range sub.sleep {
+		for msg, n := sub.pop(); n != 0; msg, n = sub.pop() {
+			sub.ch <- msg
+		}
+	}
 }
 
 // Subscribe gives a channel, to which incoming messages that match given names
@@ -179,7 +245,7 @@ func (c *RealtimeChannel) Close() error {
 //
 // If ch is non-nil and it was already registered to receive messages with different
 // names than the ones given, it will be added to receive also the new ones.
-func (c *RealtimeChannel) Subscribe(ch chan *proto.Message, names ...string) (chan *proto.Message, error) {
+func (c *RealtimeChannel) Subscribe(names ...string) (chan *proto.Message, error) {
 	if err := c.Attach(); err != nil {
 		return nil, err
 	}
@@ -189,16 +255,16 @@ func (c *RealtimeChannel) Subscribe(ch chan *proto.Message, names ...string) (ch
 	if len(names) == 0 {
 		names = []string{""}
 	}
-	c.listenMtx.Lock()
+	c.listenersMtx.Lock()
 	for _, name := range names {
-		l, ok := c.listen[name]
+		l, ok := c.listeners[name]
 		if !ok {
 			l = make(map[chan *proto.Message]struct{})
-			c.listen[name] = l
+			c.listeners[name] = l
 		}
 		l[ch] = struct{}{}
 	}
-	c.listenMtx.Unlock()
+	c.listenersMtx.Unlock()
 	return ch, nil
 }
 
@@ -210,14 +276,14 @@ func (c *RealtimeChannel) Unsubscribe(ch chan *proto.Message, names ...string) {
 	if len(names) == 0 {
 		names = []string{""}
 	}
-	c.listenMtx.Lock()
+	c.listenersMtx.Lock()
 	for _, name := range names {
-		delete(c.listen[name], ch)
-		if len(c.listen[name]) == 0 {
-			delete(c.listen, name)
+		delete(c.listeners[name], ch)
+		if len(c.listeners[name]) == 0 {
+			delete(c.listeners, name)
 		}
 	}
-	c.listenMtx.Unlock()
+	c.listenersMtx.Unlock()
 }
 
 // On relays request channel states to c; on state transition
@@ -270,9 +336,6 @@ func (c *RealtimeChannel) PublishAll(messages []*proto.Message, listen chan<- er
 	}
 	switch c.State() {
 	case StateChanInitialized, StateChanAttaching:
-		if c.client.opts.NoQueueing {
-			return errQueueing
-		}
 		c.queue.Enqueue(msg, listen)
 		return nil
 	case StateChanAttached:
@@ -285,17 +348,15 @@ func (c *RealtimeChannel) PublishAll(messages []*proto.Message, listen chan<- er
 // State gives current state of the channel.
 func (c *RealtimeChannel) State() int {
 	c.state.Lock()
-	state := c.state.current
-	c.state.Unlock()
-	return state
+	defer c.state.Unlock()
+	return c.state.current
 }
 
 // Reason gives the last error that caused channel transition to failed state.
 func (c *RealtimeChannel) Reason() error {
 	c.state.Lock()
-	err := c.state.err
-	c.state.Unlock()
-	return err
+	defer c.state.Unlock()
+	return c.state.err
 }
 
 func (c *RealtimeChannel) notify(msg *proto.ProtocolMessage) {
@@ -306,15 +367,15 @@ func (c *RealtimeChannel) notify(msg *proto.ProtocolMessage) {
 	case proto.ActionDetached:
 		c.state.syncSet(StateChanDetached, nil)
 	case proto.ActionPresence:
-		Log.Printf(LogError, "TODO: implement RealtimePresence: %v", msg)
+		// TODO realtime presence
 	case proto.ActionError:
 		c.state.syncSet(StateChanFailed, newErrorProto(msg.Error))
 		c.queue.Fail(newErrorProto(msg.Error))
 		// TODO recovery
 	case proto.ActionMessage:
-		c.listenMtx.Lock()
+		c.listenersMtx.Lock()
 		for _, msg := range msg.Messages {
-			if l, ok := c.listen[""]; ok {
+			if l, ok := c.listeners[""]; ok {
 				for ch := range l {
 					select {
 					case ch <- msg:
@@ -323,7 +384,7 @@ func (c *RealtimeChannel) notify(msg *proto.ProtocolMessage) {
 					}
 				}
 			}
-			if l, ok := c.listen[msg.Name]; ok {
+			if l, ok := c.listeners[msg.Name]; ok {
 				for ch := range l {
 					select {
 					case ch <- msg:
@@ -333,7 +394,7 @@ func (c *RealtimeChannel) notify(msg *proto.ProtocolMessage) {
 				}
 			}
 		}
-		c.listenMtx.Unlock()
+		c.listenersMtx.Unlock()
 	default:
 	}
 }
