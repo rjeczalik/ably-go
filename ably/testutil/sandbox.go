@@ -9,23 +9,27 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"reflect"
 	"time"
 
 	"github.com/ably/ably-go/ably"
 )
 
 type Key struct {
-	ID         string          `json:"id,omitempty"`
-	ScopeID    string          `json:"scopeId,omitempty"`
-	Status     int             `json:"status,omitempty"`
-	Type       int             `json:"type,omitempty"`
-	Value      string          `json:"value,omitempty"`
-	Created    int             `json:"created,omitempty"`
-	Modified   int             `json:"modified,omitempty"`
-	Capability ably.Capability `json:"capability,omitempty"`
-	Expires    int             `json:"expired,omitempty"`
-	Privileged bool            `json:"privileged,omitempty"`
+	ID            string `json:"id,omitempty"`
+	ScopeID       string `json:"scopeId,omitempty"`
+	Status        int    `json:"status,omitempty"`
+	Type          int    `json:"type,omitempty"`
+	Value         string `json:"value,omitempty"`
+	Created       int    `json:"created,omitempty"`
+	Modified      int    `json:"modified,omitempty"`
+	RawCapability string `json:"capability,omitempty"`
+	Expires       int    `json:"expired,omitempty"`
+	Privileged    bool   `json:"privileged,omitempty"`
+}
+
+func (k *Key) Capability() ably.Capability {
+	c, _ := ably.ParseCapability(k.RawCapability)
+	return c
 }
 
 type Namespace struct {
@@ -95,17 +99,12 @@ type Sandbox struct {
 	client *http.Client
 }
 
-func Provision(cfg *Config) *Sandbox {
-	app, err := NewSandbox(cfg)
+func Provision(opts *ably.ClientOptions) (*Sandbox, *ably.RealtimeClient) {
+	app, err := NewSandbox(nil)
 	if err != nil {
 		panic(err)
 	}
-	return app
-}
-
-func ProvisionRealtime(cfg *Config, opts *ably.ClientOptions) (*Sandbox, *ably.RealtimeClient) {
-	app := Provision(cfg)
-	client, err := ably.NewRealtimeClient(app.Options(opts))
+	client, err := ably.NewRealtimeClient(MergeOptions(app.Options(), opts))
 	if err != nil {
 		panic(nonil(err, app.Close()))
 	}
@@ -162,6 +161,14 @@ func (app *Sandbox) Close() error {
 	return nil
 }
 
+func (app *Sandbox) NewRealtimeClient(opts ...*ably.ClientOptions) *ably.RealtimeClient {
+	client, err := ably.NewRealtimeClient(app.Options(opts...))
+	if err != nil {
+		panic("ably.NewRealtimeClient failed: " + err.Error())
+	}
+	return client
+}
+
 func (app *Sandbox) KeyParts() (name, secret string) {
 	return app.Config.AppID + "." + app.Config.Keys[0].ID, app.Config.Keys[0].Value
 }
@@ -171,31 +178,15 @@ func (app *Sandbox) Key() string {
 	return name + ":" + secret
 }
 
-func (app *Sandbox) Options(extra *ably.ClientOptions) *ably.ClientOptions {
-	opts := &ably.ClientOptions{
+func (app *Sandbox) Options(opts ...*ably.ClientOptions) *ably.ClientOptions {
+	return MergeOptions(append([]*ably.ClientOptions{{
 		Environment: app.Environment,
-		HTTPClient:  app.client,
-		Key:         app.Key(),
 		Protocol:    os.Getenv("ABLY_PROTOCOL"),
-	}
-	if extra != nil {
-		// Overwrite any non-zero field from ClientOptions passed as argument.
-		vorig := reflect.ValueOf(opts).Elem()
-		vextr := reflect.ValueOf(extra).Elem()
-		for i := 0; i < vextr.NumField(); i++ {
-			field := vextr.Field(i)
-			typ := reflect.TypeOf(field.Interface())
-			// Ignore non-comparable fields.
-			isfunc := typ.Kind() == reflect.Func
-			if isfunc && !field.IsNil() {
-				vorig.Field(i).Set(field)
-			}
-			if !isfunc && field.Interface() != reflect.Zero(typ).Interface() {
-				vorig.Field(i).Set(field)
-			}
-		}
-	}
-	return opts
+		HTTPClient:  app.client,
+		AuthOptions: ably.AuthOptions{
+			Key: app.Key(),
+		},
+	}}, opts...)...)
 }
 
 func (app *Sandbox) URL(paths ...string) string {

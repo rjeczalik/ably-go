@@ -99,7 +99,7 @@ func (c *Conn) connect(result bool) (Result, error) {
 	if err != nil {
 		return nil, c.state.set(StateConnFailed, err)
 	}
-	token, err := rest.Auth.RequestToken(nil)
+	token, err := rest.Auth.RequestToken(nil, nil)
 	if err != nil {
 		return nil, c.state.set(StateConnFailed, err)
 	}

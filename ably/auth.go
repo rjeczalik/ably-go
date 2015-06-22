@@ -1,200 +1,212 @@
 package ably
 
 import (
-	"fmt"
-	"strconv"
+	"errors"
+	"io/ioutil"
+	"net/http"
+	"net/url"
+	"strings"
 
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 
 	"github.com/ably/ably-go/Godeps/_workspace/src/github.com/flynn/flynn/pkg/random"
-	"github.com/ably/ably-go/Godeps/_workspace/src/gopkg.in/vmihailenco/msgpack.v2"
 )
 
-type Capability map[string][]string
-
-// Ensure Capability implements JSON/msgpack {,un}marshallers.
 var (
-	_ json.Marshaler      = (*Capability)(nil)
-	_ json.Unmarshaler    = (*Capability)(nil)
-	_ msgpack.Marshaler   = (*Capability)(nil)
-	_ msgpack.Unmarshaler = (*Capability)(nil)
+	errMissingKey          = errors.New("missing key")
+	errInvalidKey          = errors.New("invalid key")
+	errMismatchedKeys      = errors.New("mismatched keys")
+	errUnsupportedType     = errors.New("unsupported Content-Type header in response from AuthURL")
+	errMissingType         = errors.New("missing Content-Type header in response from AuthURL")
+	errInvalidCallbackType = errors.New("invalid value type returned from AuthCallback")
 )
 
-func (c Capability) MarshalJSON() ([]byte, error) {
-	if len(c) == 0 {
-		return []byte(`""`), nil
+// addParams copies each params from rhs to lhs and returns lhs.
+//
+// If param from rhs exists in lhs, it's omitted.
+func addParams(lhs, rhs url.Values) url.Values {
+	for key := range rhs {
+		if lhs.Get(key) != "" {
+			continue
+		}
+		lhs.Set(key, rhs.Get(key))
 	}
-	p, err := json.Marshal((map[string][]string)(c))
-	if err != nil {
+	return lhs
+}
+
+// addHeaders copies each header from rhs to lhs and returns lhs.
+//
+// If header from rhs exists in lhs, it's omitted.
+func addHeaders(lhs, rhs http.Header) http.Header {
+	for key := range rhs {
+		if lhs.Get(key) != "" {
+			continue
+		}
+		lhs.Set(key, rhs.Get(key))
+	}
+	return lhs
+}
+
+// Auth
+type Auth struct {
+	useToken bool // when true token auth is used; basic auth otherwise
+	options  ClientOptions
+	client   *RestClient
+	token    *TokenDetails
+}
+
+// CreateTokenRequest
+func (a *Auth) CreateTokenRequest(opts *AuthOptions, params *TokenParams) (*TokenRequest, error) {
+	if opts == nil {
+		opts = &a.options.AuthOptions
+	} else {
+		opts.merge(&a.options.AuthOptions)
+	}
+	keyName, keySecret := opts.KeyName(), opts.KeySecret()
+	req := &TokenRequest{}
+	if params != nil {
+		req.TokenParams = *params
+	}
+	if req.KeyName == "" {
+		req.KeyName = keyName
+	}
+	if err := a.setDefaults(opts, req); err != nil {
 		return nil, err
 	}
-	return []byte(strconv.Quote(string(p))), nil
+	// Validate arguments.
+	switch {
+	case opts.Key == "":
+		return nil, newError(40101, errMissingKey)
+	case keyName == "" || keySecret == "":
+		return nil, newError(40102, errInvalidKey)
+	case req.KeyName != keyName:
+		return nil, newError(40102, errMismatchedKeys)
+	}
+	req.sign([]byte(keySecret))
+	return req, nil
 }
 
-func (c *Capability) UnmarshalJSON(p []byte) error {
-	s, err := strconv.Unquote(string(p))
-	if err != nil {
-		return err
+// RequestToken
+func (a *Auth) RequestToken(opts *AuthOptions, params *TokenParams) (*TokenDetails, error) {
+	if opts == nil {
+		opts = &a.options.AuthOptions
+	} else {
+		opts.merge(&a.options.AuthOptions)
 	}
-	return json.Unmarshal([]byte(s), (*map[string][]string)(c))
-}
-
-func (c Capability) MarshalMsgpack() ([]byte, error) {
-	return msgpack.Marshal(c.String())
-}
-
-func (c *Capability) UnmarshalMsgpack(p []byte) error {
-	var s string
-	if err := msgpack.Unmarshal(p, &s); err != nil {
-		return err
+	var tokReq *TokenRequest
+	switch {
+	case opts.AuthCallback != nil:
+		v, err := opts.AuthCallback(params)
+		if err != nil {
+			return nil, newError(40170, err)
+		}
+		switch v := v.(type) {
+		case *TokenRequest:
+			tokReq = v
+		case *TokenDetails:
+			return v, nil
+		case string:
+			return newTokenDetails(v), nil
+		default:
+			return nil, newError(40170, errInvalidCallbackType)
+		}
+	case opts.AuthURL != "":
+		// TODO(rjeczalik): requestAuthURL should detect whether it received
+		// *TokenRequest or *TokenDetails; current implementation assumes it's
+		// the latter to cover 2/3 of the use-case.
+		return a.requestAuthURL(opts, params)
+	default:
+		req, err := a.CreateTokenRequest(opts, params)
+		if err != nil {
+			return nil, err
+		}
+		tokReq = req
 	}
-	return json.Unmarshal([]byte(s), (*map[string][]string)(c))
-}
-
-func (c Capability) String() string {
-	p, err := json.Marshal((map[string][]string)(c))
-	if err != nil {
-		panic(err)
-	}
-	return string(p)
-}
-
-type Token struct {
-	Token      string     `json:"token" msgpack:"token"`
-	KeyName    string     `json:"keyName" msgpack:"keyName"`
-	Expires    int64      `json:"expires" msgpack:"expires"`
-	Issued     int64      `json:"issued" msgpack:"issued"`
-	Capability Capability `json:"capability" msgpack:"capability"`
-}
-
-var _ msgpack.Unmarshaler = (*Token)(nil)
-
-func (tok *Token) UnmarshalMsgpack(p []byte) error {
-	// This method is workaround for msgpack decoder, which tries to decode fields
-	// using its original type and (finding field byte boundary) and then passes
-	// the bytes to custom unmarshaller.
-	//
-	// Decoding *Token directly fails with:
-	//
-	//   msgpack: invalid code ab decoding map length
-	//
-	v := struct {
-		Token      string `msgpack:"token"`
-		KeyName    string `msgpack:"keyName"`
-		Expires    int64  `msgpack:"expires"`
-		Issued     int64  `msgpack:"issued"`
-		Capability string `msgpack:"capability"`
-	}{}
-	if err := msgpack.Unmarshal(p, &v); err != nil {
-		return err
-	}
-	if err := json.Unmarshal([]byte(v.Capability), (*map[string][]string)(&tok.Capability)); err != nil {
-		return err
-	}
-	tok.Token = v.Token
-	tok.KeyName = v.KeyName
-	tok.Expires = v.Expires
-	tok.Issued = v.Issued
-	return nil
-}
-
-type TokenRequest struct {
-	KeyName    string     `json:"keyName" msgpack:"keyName"`
-	TTL        int        `json:"ttl" msgpack:"ttl"`
-	Capability Capability `json:"capability" msgpack:"capability"`
-	ClientID   string     `json:"clientId" msgpack:"clientId"`
-	Timestamp  int64      `json:"timestamp" msgpack:"timestamp"`
-	Nonce      string     `json:"nonce" msgpack:"nonce"`
-	Mac        string     `json:"mac" msgpack:"mac"`
-}
-
-var _ msgpack.Unmarshaler = (*TokenRequest)(nil)
-
-func (req *TokenRequest) UnmarshalMsgpack(p []byte) error {
-	// This method is workaround for msgpack decoder, which tries to decode fields
-	// using its original type and (finding field byte boundary) and then passes
-	// the bytes to custom unmarshaller.
-	//
-	// Decoding *TokenRequest directly fails with:
-	//
-	//   msgpack: invalid code ab decoding map length
-	//
-	v := struct {
-		KeyName    string `msgpack:"keyName"`
-		TTL        int    `msgpack:"ttl"`
-		Capability string `msgpack:"capability"`
-		ClientID   string `msgpack:"clientId"`
-		Timestamp  int64  `msgpack:"timestamp"`
-		Nonce      string `msgpack:"nonce"`
-		Mac        string `msgpack:"mac"`
-	}{}
-	if err := msgpack.Unmarshal(p, &v); err != nil {
-		return err
-	}
-	if err := json.Unmarshal([]byte(v.Capability), (*map[string][]string)(&req.Capability)); err != nil {
-		return err
-	}
-	req.KeyName = v.KeyName
-	req.TTL = v.TTL
-	req.ClientID = v.ClientID
-	req.Timestamp = v.Timestamp
-	req.Nonce = v.Nonce
-	req.Mac = v.Mac
-	return nil
-}
-
-func (req *TokenRequest) sign(secret []byte) {
-	// Set defaults.
-	if req.Timestamp == 0 {
-		req.Timestamp = TimestampNow()
-	}
-	if req.Nonce == "" {
-		req.Nonce = random.String(32)
-	}
-	if req.Capability == nil {
-		req.Capability = Capability{"*": {"*"}}
-	}
-	if req.TTL == 0 {
-		req.TTL = 60 * 60 * 1000
-	}
-
-	// Sign.
-	mac := hmac.New(sha256.New, secret)
-	fmt.Fprintln(mac, req.KeyName)
-	fmt.Fprintln(mac, req.TTL)
-	fmt.Fprintln(mac, req.Capability.String())
-	fmt.Fprintln(mac, req.ClientID)
-	fmt.Fprintln(mac, req.Timestamp)
-	fmt.Fprintln(mac, req.Nonce)
-	req.Mac = base64.StdEncoding.EncodeToString(mac.Sum(nil))
-}
-
-type Auth struct {
-	options   ClientOptions
-	client    *RestClient
-	keyName   string
-	keySecret string
-}
-
-func (a *Auth) CreateTokenRequest() *TokenRequest {
-	return &TokenRequest{
-		KeyName:  a.keyName,
-		ClientID: a.options.ClientID,
-	}
-}
-
-func (a *Auth) RequestToken(req *TokenRequest) (*Token, error) {
-	if req == nil {
-		req = a.CreateTokenRequest()
-	}
-	req.sign([]byte(a.keySecret))
-	token := &Token{}
-	_, err := a.client.Post("/keys/"+req.KeyName+"/requestToken", req, token)
+	token := &TokenDetails{}
+	_, err := a.client.Post("/keys/"+tokReq.KeyName+"/requestToken", tokReq, token)
 	if err != nil {
 		return nil, err
 	}
 	return token, nil
+}
+
+// Authorise
+func (a *Auth) Authorise(opts *AuthOptions, params *TokenParams, force bool) (*TokenDetails, error) {
+	if a.token != nil && !a.token.Expired() && !force {
+		return a.token, nil
+	}
+	token, err := a.RequestToken(opts, params)
+	if err != nil {
+		a.token = nil
+		return nil, err
+	}
+	a.token = token
+	return token, nil
+}
+
+func (a *Auth) setDefaults(opts *AuthOptions, req *TokenRequest) error {
+	if req.Nonce == "" {
+		req.Nonce = random.String(32)
+	}
+	if req.RawCapability == "" {
+		req.RawCapability = (Capability{"*": {"*"}}).Encode()
+	}
+	if req.TTL == 0 {
+		req.TTL = 60 * 60 * 1000
+	}
+	if req.ClientID == "" {
+		req.ClientID = a.options.ClientID
+	}
+	if req.Timestamp == 0 {
+		if opts.UseQueryTime {
+			t, err := a.client.Time()
+			if err != nil {
+				return newError(40100, err)
+			}
+			req.Timestamp = Timestamp(t)
+		} else {
+			req.Timestamp = TimestampNow()
+		}
+	}
+	return nil
+}
+
+func (a *Auth) requestAuthURL(opts *AuthOptions, params *TokenParams) (*TokenDetails, error) {
+	req, err := http.NewRequest(opts.authURLMethod(), opts.AuthURL, nil)
+	if err != nil {
+		return nil, newError(40000, err)
+	}
+	req.URL.RawQuery = addParams(params.Query(), opts.AuthParams).Encode()
+	req.Header = addHeaders(req.Header, opts.AuthHeaders)
+	resp, err := a.options.httpclient().Do(req)
+	if err != nil {
+		return nil, newError(40000, err)
+	}
+	if err = checkValidHTTPResponse(resp); err != nil {
+		return nil, newError(40000, err)
+	}
+	defer resp.Body.Close()
+	contentType := resp.Header.Get("Content-Type")
+	if i := strings.IndexRune(contentType, ';'); i != -1 {
+		contentType = contentType[:i]
+	}
+	switch contentType {
+	case "text/plain":
+		token, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return nil, newError(40000, err)
+		}
+		return newTokenDetails(string(token)), nil
+	case "application/json":
+		var token TokenDetails
+		err := json.NewDecoder(resp.Body).Decode(&token)
+		if err != nil {
+			return nil, newError(40000, err)
+		}
+		return &token, nil
+	case "":
+		return nil, newError(40000, errMissingType)
+	default:
+		return nil, newError(40000, errUnsupportedType)
+	}
 }

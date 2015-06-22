@@ -45,7 +45,7 @@ type RestClient struct {
 func NewRestClient(options *ClientOptions) (*RestClient, error) {
 	keyName, keySecret := options.KeyName(), options.KeySecret()
 	if keyName == "" || keySecret == "" {
-		return nil, newErrorf(40005, "invalid key format")
+		return nil, newError(40005, errInvalidKey)
 	}
 	c := &RestClient{
 		Protocol: options.protocol(),
@@ -53,10 +53,8 @@ func NewRestClient(options *ClientOptions) (*RestClient, error) {
 		chans:    make(map[string]*RestChannel),
 	}
 	c.Auth = &Auth{
-		options:   *options,
-		client:    c,
-		keyName:   keyName,
-		keySecret: keySecret,
+		options: *options,
+		client:  c,
 	}
 	return c, nil
 }
@@ -152,7 +150,7 @@ func (c *RestClient) newRequest(method, path string, in interface{}) (*http.Requ
 		req.Header.Set("Content-Type", typ)
 	}
 	req.Header.Set("Accept", typ)
-	req.SetBasicAuth(c.Auth.keyName, c.Auth.keySecret)
+	req.SetBasicAuth(c.Auth.options.KeyName(), c.Auth.options.KeySecret())
 	return req, nil
 }
 
